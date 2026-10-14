@@ -1,0 +1,66 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: capton-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-capton}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-capton_local_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-capton}
+    volumes:
+      - capton_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-capton} -d ${POSTGRES_DB:-capton}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: capton-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-capton}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-capton_local_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-capton}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      SECRET_KEY: ${SECRET_KEY:-cambia-esta-clave-en-produccion}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-720}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080}
+      UPLOAD_DIR: /data/uploads
+      MODEL_DIR: /data/models
+    volumes:
+      - capton_uploads:/data/uploads
+      - capton_models:/data/models
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+      start_period: 90s
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: capton-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+
+volumes:
+  capton_pg:
+  capton_uploads:
+  capton_models:
